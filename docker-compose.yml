@@ -1,0 +1,8 @@
+services:
+  marchialerts:
+    build: .
+    ports:
+      - "9094:9094"
+    # Mount your own config over the baked-in example if needed:
+    # volumes:
+    #   - ./my-config.yaml:/etc/marchialerts/config.yaml:ro

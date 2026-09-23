@@ -1,0 +1,14 @@
+# Binaries
+/marchialerts
+/bin/
+/dist/
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,18 @@
+# Worked example from PLAN.md §4.
+listen: :9094
+eval_interval: 2s
+group_wait: 3s
+group_interval: 6s
+repeat_interval: 12s          # must be a multiple of group_interval; coerced up if not
+group_by: [alertname, team]
+contact_points:
+  - name: logger
+    stdout: {}
+  - name: hook
+    webhook:
+      url: http://127.0.0.1:9999/alerts
+rules:
+  - alert: HighCPU
+    expr: { metric: cpu_usage, labels: { job: api }, op: ">", threshold: 0.8 }
+    for: 4s
+    labels: { team: o11y, severity: warning }
