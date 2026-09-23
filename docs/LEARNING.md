@@ -39,7 +39,7 @@ deliberately cut.
 | # | Claim | Shown by | Status |
 |---|---|---|---|
 | H1 | Engine glued at a protocol to AM; eval never calls contact points | PR3 | ⬜ |
-| H2 | Only firing and resolved leave the engine | PR2–PR3 | ⬜ |
+| H2 | Only firing and resolved leave the engine | PR2–PR3 | 🔶 state machine + `ShouldNotify` (PR2); wire to `PutAlerts` in PR3 |
 | H3 | AM owns contact points, grouping + timers, pipeline, silences, notification state | PR4–PR6 | ⬜ |
 | H4 | Contact point = dumb ingress adapter | PR5 | ⬜ |
 | H5 | Group wait on birth only; interval after; empty+notified deletes; repeat multiple of interval; dedup gates every flush | PR4 | ⬜ |
@@ -51,3 +51,4 @@ deliberately cut.
 
 - **PR0:** scaffold — YAML config (durations, `repeat_interval` coercion), `-httpListenAddr` / `-config` / `-evalInterval` flags, `GET /healthz`, Dockerfile. No eval, no AM yet.
 - **PR1:** metrics in + eval tick — `metrics.Store` (latest sample per series, canonical series key), `POST /api/v1/import` (`{metric, labels, t, v}`, single or array), `engine.Evaluator` ticks `eval_interval` and logs `firing`/`ok` per (rule, series). Learned: a rule is a spec; a problem is per label set — one rule over two series yields two results. Stateless for now: no `for`, no instances, no AM.
+- **PR2:** instance state machine + `for` — `engine.StateManager` keyed by rule × canonical labels; `normal → pending (for not elapsed) → firing → resolved → normal`; refire starts a fresh firing period. `Transition.ShouldNotify()` encodes **H2**: only `firing`/`resolved` may ever leave the engine — pending transitions log `notify=false`. All time logic under an injected clock; tests advance it explicitly, nobody sleeps in CI.

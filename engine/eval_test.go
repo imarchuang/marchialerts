@@ -30,54 +30,54 @@ func twoSeries(t *testing.T) *metrics.Store {
 	return st
 }
 
-// PR1 acceptance: one rule, two series — the "problem" is per label set,
-// not per rule. Only the breaching series may log firing.
+// PR1 acceptance, restated on the PR2 state machine: one rule, two series —
+// the "problem" is per label set, not per rule. Only the breaching series
+// produces a (firing) transition; the healthy one stays silently normal.
 func TestEvalOnceTwoSeriesOnlyBadOneFires(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
-	ev := &engine.Evaluator{Rules: []engine.Rule{highCPU()}, Store: twoSeries(t), Log: log}
+	ev := &engine.Evaluator{
+		Rules:  []engine.Rule{highCPU()},
+		Store:  twoSeries(t),
+		States: engine.NewStateManager(),
+		Now:    func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
+		Log:    log,
+	}
 
-	results, err := ev.EvalOnce()
+	transitions, err := ev.EvalOnce()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 2 {
-		t.Fatalf("results = %d, want 2 (one per series)", len(results))
+	if len(transitions) != 1 {
+		t.Fatalf("transitions = %d, want 1 (only host=a fires)", len(transitions))
+	}
+	tr := transitions[0]
+	if tr.To != engine.StateFiring || tr.Instance.Labels["host"] != "a" {
+		t.Errorf("transition = %+v, want →firing for host=a", tr)
 	}
 
-	// Select order is deterministic: host=a first.
-	if !results[0].Firing || results[0].Labels["host"] != "a" {
-		t.Errorf("results[0] = %+v, want firing host=a", results[0])
-	}
-	if results[1].Firing || results[1].Labels["host"] != "b" {
-		t.Errorf("results[1] = %+v, want ok host=b", results[1])
-	}
-
-	ev.LogResults(results)
+	ev.LogTransitions(transitions)
 	out := buf.String()
-	if c := strings.Count(out, "state=firing"); c != 1 {
+	if c := strings.Count(out, "to=firing"); c != 1 {
 		t.Errorf("firing lines = %d, want 1\n%s", c, out)
 	}
-	if c := strings.Count(out, "state=ok"); c != 1 {
-		t.Errorf("ok lines = %d, want 1\n%s", c, out)
-	}
-	if !strings.Contains(out, "host=a") || !strings.Contains(out, "host=b") {
-		t.Errorf("log lines should name the instance labels\n%s", out)
+	if strings.Contains(out, "host=b") {
+		t.Errorf("host=b is steady normal and must stay quiet\n%s", out)
 	}
 }
 
-func TestEvalOnceNoSeriesNoResults(t *testing.T) {
+func TestEvalOnceNoSeriesNoTransitions(t *testing.T) {
 	ev := &engine.Evaluator{
 		Rules: []engine.Rule{highCPU()},
 		Store: metrics.NewStore(),
 		Log:   slog.Default(),
 	}
-	results, err := ev.EvalOnce()
+	transitions, err := ev.EvalOnce()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 0 {
-		t.Errorf("results = %v, want empty", results)
+	if len(transitions) != 0 {
+		t.Errorf("transitions = %v, want empty", transitions)
 	}
 }
 

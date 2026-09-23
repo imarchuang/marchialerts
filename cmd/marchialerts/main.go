@@ -60,12 +60,12 @@ func run() error {
 	}
 
 	store := metrics.NewStore()
-	ev := &engine.Evaluator{Rules: rules, Store: store, Log: log}
+	ev := &engine.Evaluator{Rules: rules, Store: store, States: engine.NewStateManager(), Log: log}
 
 	evalCtx, stopEval := context.WithCancel(context.Background())
 	defer stopEval()
 	go ev.Run(evalCtx, time.Duration(cfg.EvalInterval))
-	log.Info("eval loop running (PR1: stateless firing/ok per series; instances land in PR2, AM pipeline in PR4)")
+	log.Info("eval loop running (PR2: instance state machine normal→pending→firing→resolved; PutAlerts boundary in PR3)")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
