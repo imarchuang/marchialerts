@@ -14,6 +14,7 @@ import (
 	"marchialerts/am"
 	"marchialerts/engine"
 	"marchialerts/metrics"
+	"marchialerts/notify"
 )
 
 func main() {
@@ -62,30 +63,30 @@ func run() error {
 
 	store := metrics.NewStore()
 
-	// PR4: real in-process AM — one default route, aggregation groups with
-	// the three timers, nflog dedup. Notifications are logged for now;
-	// stdout/webhook adapters land in PR5.
+	// PR5: real contact points. Each configured adapter is wrapped in a
+	// bounded-retry stage; the fanout delivers every group payload to all
+	// of them (AM FanoutStage). Adapters stay dumb — no grouping here (H4).
+	var points notify.Fanout
+	for _, cp := range cfg.ContactPoints {
+		switch {
+		case cp.Stdout != nil:
+			points = append(points, notify.NewStdout(log))
+			log.Info("contact point configured", "name", cp.Name, "type", "stdout")
+		case cp.Webhook != nil:
+			points = append(points, notify.NewRetry(notify.NewWebhook(cp.Name, cp.Webhook.URL)))
+			log.Info("contact point configured", "name", cp.Name, "type", "webhook", "url", cp.Webhook.URL)
+		default:
+			log.Warn("contact point has no adapter config, skipped", "name", cp.Name)
+		}
+	}
+
 	dispatcher := am.NewDispatcher(am.RouteOpts{
 		Receiver:       "default",
 		GroupBy:        cfg.GroupBy,
 		GroupWait:      time.Duration(cfg.GroupWait),
 		GroupInterval:  time.Duration(cfg.GroupInterval),
 		RepeatInterval: time.Duration(cfg.RepeatInterval),
-	}, am.NotifierFunc(func(groupKey string, alerts []am.PostableAlert) error {
-		for _, a := range alerts {
-			status := "firing"
-			if a.ResolvedAt(time.Now()) {
-				status = "resolved"
-			}
-			log.Info("notify",
-				"group", groupKey,
-				"fingerprint", a.Fingerprint().String(),
-				"status", status,
-				"labels", a.Labels,
-			)
-		}
-		return nil
-	}))
+	}, points)
 
 	ev := &engine.Evaluator{
 		Rules:  rules,
@@ -111,7 +112,7 @@ func run() error {
 			}
 		}
 	}()
-	log.Info("eval loop + AM dispatcher running (PR4: groups + timers + dedup; contact points in PR5)")
+	log.Info("eval loop + AM dispatcher running (PR5: stdout/webhook contact points + retry; silences in PR6)")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)

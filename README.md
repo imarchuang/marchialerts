@@ -27,7 +27,7 @@ Flags: `-httpListenAddr` (default `:9094`), `-config`, `-evalInterval`.
 - [x] PR2 — instance state machine + `for`: `normal → pending → firing → resolved`, fake-clock tests
 - [x] PR3 — `PutAlerts` boundary + receiver-side fingerprint (FNV-1a canonical labels; merge; rolling `endsAt`)
 - [x] PR4 — aggregation groups + three timers + dedup (group wait/interval/repeat, GroupByAll, nflog gating, group teardown)
-- [ ] PR5 — contact points (stdout, webhook) + retry
+- [x] PR5 — contact points (stdout, webhook) + retry (bounded backoff; 5xx retryable, 4xx permanent; fan-out)
 - [ ] PR6 — silences
 - [ ] PR7 — optional: inhibition, time intervals, snapshot file, Kafka/file adapter
 
