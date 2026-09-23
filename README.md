@@ -25,7 +25,7 @@ Flags: `-httpListenAddr` (default `:9094`), `-config`, `-evalInterval`.
 - [x] PR0 — scaffold: YAML config (with `repeat_interval` coercion), `/healthz`, Dockerfile
 - [x] PR1 — metrics in (`POST /api/v1/import`) + eval tick: threshold rules log `firing`/`ok` per series
 - [x] PR2 — instance state machine + `for`: `normal → pending → firing → resolved`, fake-clock tests
-- [ ] PR3 — `PutAlerts` boundary + receiver-side fingerprint
+- [x] PR3 — `PutAlerts` boundary + receiver-side fingerprint (FNV-1a canonical labels; merge; rolling `endsAt`)
 - [ ] PR4 — aggregation groups + three timers + dedup
 - [ ] PR5 — contact points (stdout, webhook) + retry
 - [ ] PR6 — silences

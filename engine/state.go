@@ -16,7 +16,6 @@ const (
 	StateFiring
 	StateResolved
 )
-
 func (s State) String() string {
 	switch s {
 	case StateNormal:
@@ -52,6 +51,7 @@ func (i *Instance) Key() string {
 // Transition records one state change of an instance.
 type Transition struct {
 	Instance Instance // snapshot after the transition
+	Rule     Rule
 	From, To State
 	At       time.Time
 }
@@ -124,5 +124,5 @@ func (sm *StateManager) Apply(rule Rule, labels map[string]string, value float64
 	}
 	inst.LastValue, inst.LastEval = value, now
 
-	return Transition{Instance: *inst, From: from, To: inst.State, At: now}
+	return Transition{Instance: *inst, Rule: rule, From: from, To: inst.State, At: now}
 }

@@ -12,10 +12,13 @@ import (
 // Evaluator ticks over the rules, compares each matching series against its
 // threshold, and folds the outcome into the instance state machine (PR2).
 // Only state transitions are returned/logged — steady states are quiet.
+// Transitions that ShouldNotify go to the AM via the Sender (PR3): the only
+// egress from the engine (H1).
 type Evaluator struct {
 	Rules  []Rule
 	Store  *metrics.Store
 	States *StateManager
+	Sender *Sender
 	// Now injects the clock; nil means time.Now. Tests use a fake clock —
 	// never sleep in CI.
 	Now func() time.Time
@@ -48,6 +51,9 @@ func (e *Evaluator) EvalOnce() ([]Transition, error) {
 				out = append(out, tr)
 			}
 		}
+	}
+	if e.Sender != nil {
+		e.Sender.Send(out)
 	}
 	return out, nil
 }
