@@ -1,0 +1,33 @@
+# marchialerts
+
+A learning MVP that re-implements the core of Grafana Alerting in one binary:
+**evaluate → policy/group → notify**. Not a Grafana fork, not a production
+notifier — see [PLAN.md](PLAN.md) for the full plan and
+[docs/LEARNING.md](docs/LEARNING.md) for the Grafana ↔ marchialerts mapping.
+
+## Quick start
+
+```sh
+go run ./cmd/marchialerts -config config.example.yaml
+curl localhost:9094/healthz   # ok
+```
+
+Flags: `-httpListenAddr` (default `:9094`), `-config`, `-evalInterval`.
+
+## Status
+
+- [x] PR0 — scaffold: YAML config (with `repeat_interval` coercion), `/healthz`, Dockerfile
+- [ ] PR1 — metrics in + eval tick
+- [ ] PR2 — instance state machine + `for`
+- [ ] PR3 — `PutAlerts` boundary + receiver-side fingerprint
+- [ ] PR4 — aggregation groups + three timers + dedup
+- [ ] PR5 — contact points (stdout, webhook) + retry
+- [ ] PR6 — silences
+- [ ] PR7 — optional: inhibition, time intervals, snapshot file, Kafka/file adapter
+
+## Docker
+
+```sh
+docker build -t marchialerts .
+docker run --rm -p 9094:9094 marchialerts
+```
