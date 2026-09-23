@@ -61,19 +61,57 @@ func run() error {
 	}
 
 	store := metrics.NewStore()
-	amStub := &am.Stub{} // PR3: records PutAlerts; real groups land in PR4
+
+	// PR4: real in-process AM — one default route, aggregation groups with
+	// the three timers, nflog dedup. Notifications are logged for now;
+	// stdout/webhook adapters land in PR5.
+	dispatcher := am.NewDispatcher(am.RouteOpts{
+		Receiver:       "default",
+		GroupBy:        cfg.GroupBy,
+		GroupWait:      time.Duration(cfg.GroupWait),
+		GroupInterval:  time.Duration(cfg.GroupInterval),
+		RepeatInterval: time.Duration(cfg.RepeatInterval),
+	}, am.NotifierFunc(func(groupKey string, alerts []am.PostableAlert) error {
+		for _, a := range alerts {
+			status := "firing"
+			if a.ResolvedAt(time.Now()) {
+				status = "resolved"
+			}
+			log.Info("notify",
+				"group", groupKey,
+				"fingerprint", a.Fingerprint().String(),
+				"status", status,
+				"labels", a.Labels,
+			)
+		}
+		return nil
+	}))
+
 	ev := &engine.Evaluator{
 		Rules:  rules,
 		Store:  store,
 		States: engine.NewStateManager(),
-		Sender: &engine.Sender{AM: amStub},
+		Sender: &engine.Sender{AM: dispatcher},
 		Log:    log,
 	}
 
 	evalCtx, stopEval := context.WithCancel(context.Background())
 	defer stopEval()
 	go ev.Run(evalCtx, time.Duration(cfg.EvalInterval))
-	log.Info("eval loop running (PR3: transitions → PutAlerts via am.Stub; groups + notify pipeline in PR4)")
+	go func() {
+		// AM flush ticker: checks every group's next flush time.
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-evalCtx.Done():
+				return
+			case <-t.C:
+				dispatcher.Tick()
+			}
+		}
+	}()
+	log.Info("eval loop + AM dispatcher running (PR4: groups + timers + dedup; contact points in PR5)")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)

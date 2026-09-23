@@ -26,7 +26,7 @@ Flags: `-httpListenAddr` (default `:9094`), `-config`, `-evalInterval`.
 - [x] PR1 — metrics in (`POST /api/v1/import`) + eval tick: threshold rules log `firing`/`ok` per series
 - [x] PR2 — instance state machine + `for`: `normal → pending → firing → resolved`, fake-clock tests
 - [x] PR3 — `PutAlerts` boundary + receiver-side fingerprint (FNV-1a canonical labels; merge; rolling `endsAt`)
-- [ ] PR4 — aggregation groups + three timers + dedup
+- [x] PR4 — aggregation groups + three timers + dedup (group wait/interval/repeat, GroupByAll, nflog gating, group teardown)
 - [ ] PR5 — contact points (stdout, webhook) + retry
 - [ ] PR6 — silences
 - [ ] PR7 — optional: inhibition, time intervals, snapshot file, Kafka/file adapter
