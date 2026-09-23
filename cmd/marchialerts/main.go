@@ -10,6 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"marchialerts/engine"
+	"marchialerts/metrics"
 )
 
 func main() {
@@ -50,10 +53,23 @@ func run() error {
 		"rules", len(cfg.Rules),
 		"contact_points", len(cfg.ContactPoints),
 	)
-	log.Info("PR0 scaffold: only /healthz is served; eval loop lands in PR1, AM pipeline in PR4")
+
+	rules, err := engineRules(cfg.Rules)
+	if err != nil {
+		return err
+	}
+
+	store := metrics.NewStore()
+	ev := &engine.Evaluator{Rules: rules, Store: store, Log: log}
+
+	evalCtx, stopEval := context.WithCancel(context.Background())
+	defer stopEval()
+	go ev.Run(evalCtx, time.Duration(cfg.EvalInterval))
+	log.Info("eval loop running (PR1: stateless firing/ok per series; instances land in PR2, AM pipeline in PR4)")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("POST /api/v1/import", metrics.ImportHandler(store, time.Now))
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -70,6 +86,7 @@ func run() error {
 	select {
 	case sig := <-sigCh:
 		log.Info("received signal, shutting down", "signal", sig)
+		stopEval()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return srv.Shutdown(ctx)

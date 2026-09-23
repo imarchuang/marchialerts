@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"marchialerts/engine"
 )
 
 // Duration is a time.Duration that unmarshals from YAML strings like "2s".
@@ -117,4 +119,27 @@ func LoadConfig(path string, log *slog.Logger) (Config, error) {
 		cfg.RepeatInterval = Duration(coerced)
 	}
 	return cfg, nil
+}
+
+// engineRules converts YAML rule specs into engine rules and validates them.
+func engineRules(rules []Rule) ([]engine.Rule, error) {
+	out := make([]engine.Rule, 0, len(rules))
+	for i, r := range rules {
+		er := engine.Rule{
+			Alert: r.Alert,
+			Expr: engine.Expr{
+				Metric:    r.Expr.Metric,
+				Labels:    r.Expr.Labels,
+				Op:        r.Expr.Op,
+				Threshold: r.Expr.Threshold,
+			},
+			For:    time.Duration(r.For),
+			Labels: r.Labels,
+		}
+		if err := er.Validate(); err != nil {
+			return nil, fmt.Errorf("rules[%d]: %w", i, err)
+		}
+		out = append(out, er)
+	}
+	return out, nil
 }

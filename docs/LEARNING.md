@@ -49,4 +49,5 @@ deliberately cut.
 
 ## PR log
 
-- **PR0 (this commit):** scaffold — YAML config (durations, `repeat_interval` coercion), `-httpListenAddr` / `-config` / `-evalInterval` flags, `GET /healthz`, Dockerfile. No eval, no AM yet.
+- **PR0:** scaffold — YAML config (durations, `repeat_interval` coercion), `-httpListenAddr` / `-config` / `-evalInterval` flags, `GET /healthz`, Dockerfile. No eval, no AM yet.
+- **PR1:** metrics in + eval tick — `metrics.Store` (latest sample per series, canonical series key), `POST /api/v1/import` (`{metric, labels, t, v}`, single or array), `engine.Evaluator` ticks `eval_interval` and logs `firing`/`ok` per (rule, series). Learned: a rule is a spec; a problem is per label set — one rule over two series yields two results. Stateless for now: no `for`, no instances, no AM.

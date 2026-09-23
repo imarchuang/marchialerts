@@ -146,3 +146,38 @@ func TestMissingFile(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestEngineRulesConversion(t *testing.T) {
+	cfg, err := LoadConfig(writeTempConfig(t, exampleYAML), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := engineRules(cfg.Rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("rules = %d, want 1", len(rules))
+	}
+	r := rules[0]
+	if r.Alert != "HighCPU" || r.Expr.Metric != "cpu_usage" || r.Expr.Op != ">" {
+		t.Errorf("engine rule = %+v", r)
+	}
+	if r.For != 4*time.Second {
+		t.Errorf("for = %v, want 4s", r.For)
+	}
+}
+
+func TestEngineRulesRejectsBadOp(t *testing.T) {
+	cfg, err := LoadConfig(writeTempConfig(t, `
+rules:
+  - alert: Bad
+    expr: { metric: m, op: "~", threshold: 1 }
+`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engineRules(cfg.Rules); err == nil {
+		t.Fatal("expected validation error for bad op")
+	}
+}
