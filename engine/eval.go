@@ -9,50 +9,59 @@ import (
 	"marchialerts/metrics"
 )
 
-// Evaluator ticks over the rules and compares each matching series against
-// its threshold. PR1 is stateless: every tick logs firing/ok per
-// (rule, series). Instance state (pending/for/resolved) arrives in PR2.
+// Evaluator ticks over the rules, compares each matching series against its
+// threshold, and folds the outcome into the instance state machine (PR2).
+// Only state transitions are returned/logged — steady states are quiet.
 type Evaluator struct {
-	Rules []Rule
-	Store *metrics.Store
-	Log   *slog.Logger
+	Rules  []Rule
+	Store  *metrics.Store
+	States *StateManager
+	// Now injects the clock; nil means time.Now. Tests use a fake clock —
+	// never sleep in CI.
+	Now func() time.Time
+	Log *slog.Logger
 }
 
-// Result is one evaluated (rule, series) pair — the proto-instance.
-type Result struct {
-	Rule   Rule
-	Labels map[string]string
-	Value  float64
-	Firing bool
+func (e *Evaluator) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
+	}
+	return time.Now()
 }
 
-// EvalOnce runs one evaluation tick over all rules.
-func (e *Evaluator) EvalOnce() ([]Result, error) {
-	var out []Result
+// EvalOnce runs one evaluation tick over all rules and returns the state
+// transitions it caused (empty when nothing changed).
+func (e *Evaluator) EvalOnce() ([]Transition, error) {
+	if e.States == nil {
+		e.States = NewStateManager()
+	}
+	now := e.now()
+	var out []Transition
 	for _, r := range e.Rules {
 		for _, sm := range e.Store.Select(r.Expr.Metric, r.Expr.Labels) {
 			firing, err := r.Expr.Compare(sm.V)
 			if err != nil {
 				return out, fmt.Errorf("rule %q: %w", r.Alert, err)
 			}
-			out = append(out, Result{Rule: r, Labels: sm.Labels, Value: sm.V, Firing: firing})
+			tr := e.States.Apply(r, sm.Labels, sm.V, firing, now)
+			if tr.From != tr.To {
+				out = append(out, tr)
+			}
 		}
 	}
 	return out, nil
 }
 
-// LogResults emits one line per result: firing or ok.
-func (e *Evaluator) LogResults(results []Result) {
-	for _, res := range results {
-		state := "ok"
-		if res.Firing {
-			state = "firing"
-		}
-		e.Log.Info("eval",
-			"rule", res.Rule.Alert,
-			"labels", metrics.LabelsString(res.Labels),
-			"value", res.Value,
-			"state", state,
+// LogTransitions emits one line per state change.
+func (e *Evaluator) LogTransitions(transitions []Transition) {
+	for _, tr := range transitions {
+		e.Log.Info("transition",
+			"rule", tr.Instance.RuleAlert,
+			"labels", metrics.LabelsString(tr.Instance.Labels),
+			"from", tr.From.String(),
+			"to", tr.To.String(),
+			"value", tr.Instance.LastValue,
+			"notify", tr.ShouldNotify(),
 		)
 	}
 }
@@ -66,12 +75,12 @@ func (e *Evaluator) Run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			results, err := e.EvalOnce()
+			transitions, err := e.EvalOnce()
 			if err != nil {
 				e.Log.Error("eval tick failed", "err", err)
 				continue
 			}
-			e.LogResults(results)
+			e.LogTransitions(transitions)
 		}
 	}
 }
