@@ -28,7 +28,7 @@ Flags: `-httpListenAddr` (default `:9094`), `-config`, `-evalInterval`.
 - [x] PR3 — `PutAlerts` boundary + receiver-side fingerprint (FNV-1a canonical labels; merge; rolling `endsAt`)
 - [x] PR4 — aggregation groups + three timers + dedup (group wait/interval/repeat, GroupByAll, nflog gating, group teardown)
 - [x] PR5 — contact points (stdout, webhook) + retry (bounded backoff; 5xx retryable, 4xx permanent; fan-out)
-- [ ] PR6 — silences
+- [x] PR6 — silences (matcher gate in flush; eval keeps running, webhook stays silent, alert stays firing)
 - [ ] PR7 — optional: inhibition, time intervals, snapshot file, Kafka/file adapter
 
 ## Docker

@@ -25,6 +25,7 @@ type Dispatcher struct {
 	opts     RouteOpts
 	nflog    *Log
 	notifier Notifier
+	Silences *SilenceStore
 
 	groups map[string]*aggrGroup
 }
@@ -37,6 +38,7 @@ func NewDispatcher(opts RouteOpts, notifier Notifier) *Dispatcher {
 		opts:     opts,
 		nflog:    NewLog(),
 		notifier: notifier,
+		Silences: NewSilenceStore(),
 		groups:   make(map[string]*aggrGroup),
 	}
 }
@@ -71,9 +73,23 @@ func (d *Dispatcher) insert(a PostableAlert) {
 	}
 }
 
-// flush runs one timer fire for a group: dedup gate → notify → bookkeeping.
+// flush runs one timer fire for a group: silence gate → dedup gate → notify
+// → bookkeeping. Silence drops the notification but leaves the group and
+// nflog untouched (H6: eval and grouping keep running).
 func (d *Dispatcher) flush(g *aggrGroup) {
 	t := now()
+
+	// Silence gate: split the batch into muted vs notifiable alerts.
+	// Silenced alerts stay in the group (still firing) but are not sent.
+	batch := g.batch(t)
+	var sendable []PostableAlert
+	for _, a := range batch {
+		muted, _ := d.Silences.Mutes(a.Labels, t)
+		if !muted {
+			sendable = append(sendable, a)
+		}
+	}
+
 	firing, resolved := g.split(t)
 
 	entry := d.nflog.Get(g.receiver, g.key)
@@ -82,12 +98,16 @@ func (d *Dispatcher) flush(g *aggrGroup) {
 	g.hasFlushed = true
 	g.nextFlush = t.Add(d.opts.GroupInterval)
 
-	if !send {
+	if !send || len(sendable) == 0 {
+		// Either dedup says nothing changed, or every alert is silenced.
+		// Note: silenced alerts do NOT update the nflog — when the silence
+		// expires, the unchanged set is still "not yet notified" and the
+		// next flush sends it.
 		return
 	}
 
 	if d.notifier != nil {
-		if err := d.notifier.Notify(g.key, g.batch(t)); err != nil {
+		if err := d.notifier.Notify(g.key, sendable); err != nil {
 			// Failure: keep resolved alerts up to 3*group_interval (bounds
 			// memory, mirrors AM DeleteIfStale); try again next flush.
 			d.deleteResolved(g, t.Add(-3*d.opts.GroupInterval))
@@ -148,6 +168,40 @@ func (d *Dispatcher) GroupAlerts(key string) []PostableAlert {
 	out := make([]PostableAlert, 0, len(g.alerts))
 	for _, a := range g.alerts {
 		out = append(out, a)
+	}
+	return out
+}
+
+// AlertView is the inspectable status of one alert (API v2 style).
+type AlertView struct {
+	PostableAlert
+	Fingerprint string   `json:"fingerprint"`
+	Status      string   `json:"status"` // firing | resolved
+	SilencedBy  []string `json:"silencedBy"`
+}
+
+// Alerts returns every alert across all groups with its silence status.
+// silenced filter: nil = all, &true = only silenced, &false = only not.
+func (d *Dispatcher) Alerts(silenced *bool) []AlertView {
+	t := now()
+	var out []AlertView
+	for _, g := range d.groups {
+		for _, a := range g.alerts {
+			muted, ids := d.Silences.Mutes(a.Labels, t)
+			if silenced != nil && muted != *silenced {
+				continue
+			}
+			status := "firing"
+			if a.ResolvedAt(t) {
+				status = "resolved"
+			}
+			out = append(out, AlertView{
+				PostableAlert: a,
+				Fingerprint:   a.Fingerprint().String(),
+				Status:        status,
+				SilencedBy:    ids,
+			})
+		}
 	}
 	return out
 }
