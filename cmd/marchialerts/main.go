@@ -112,11 +112,12 @@ func run() error {
 			}
 		}
 	}()
-	log.Info("eval loop + AM dispatcher running (PR5: stdout/webhook contact points + retry; silences in PR6)")
+	log.Info("eval loop + AM dispatcher running (PR6: silences gate notify, eval keeps running)")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("POST /api/v1/import", metrics.ImportHandler(store, time.Now))
+	dispatcher.RegisterHTTP(mux) // PR6: /api/v2/silences, /api/v2/alerts
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
